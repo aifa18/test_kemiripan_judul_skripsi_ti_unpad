@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import re
+from fuzzywuzzy import fuzz
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.pipeline import make_pipeline
@@ -10,7 +11,16 @@ import requests
 TOGETHER_API_KEY = "dbca14bfa35585175c337ca19b242e4f5b765a8bbe6aa0d9d555b32750853da7"
 TOGETHER_MODEL = "mistralai/Mixtral-8x7B-Instruct-v0.1"
 
-def ask_together_ai(prompt):
+def ask_together_ai(user_input):
+    prompt = f"""
+    Kamu adalah chatbot untuk membantu mahasiswa memeriksa kemiripan judul skripsi mereka dan memberikan informasi terkait judul skripsi atau skripsi. 
+    Judul skripsi yang sedang dicek: "{st.session_state.judul_user}". 
+    Bidang minat terdeteksi: "{st.session_state.bidang_prediksi}". 
+    Judul-judul skripsi yang mirip: {st.session_state.similar_titles}. 
+    Pertanyaan pengguna: "{user_input}". 
+    Jawablah dengan relevan sesuai konteks.
+    """
+
     url = "https://api.together.xyz/inference"
     headers = {
         "Authorization": f"Bearer {TOGETHER_API_KEY}",
@@ -26,12 +36,17 @@ def ask_together_ai(prompt):
     if response.status_code == 200:
         try:
             json_response = response.json()
-            return json_response["choices"][0]["text"]
+            raw_output = json_response["choices"][0]["text"]
+
+            # Bersihkan kata-kata "Jawaban:" atau "Contoh jawaban:"
+            clean_output = re.sub(r"(?i)^\s*(jawaban|contoh jawaban)\s*[:：-]\s", "", raw_output.strip())
+
+            return clean_output
+
         except (KeyError, IndexError):
             return "Maaf, aku tidak bisa memproses hasil Together AI."
     else:
         return f"⚠ Error dari Together AI: {response.status_code} - {response.text}"
-
 
 # ---------- Load Dataset ----------
 @st.cache_data
@@ -100,37 +115,66 @@ def cek_kemiripan(judul, metode='', threshold=0.01):
     
     return df_mirip['score'].tolist(), titles, methods, bidang_prediksi, max_score, top_title
 
+intent_synonyms = {
+    "greeting": ["halo", "hai", "pagi", "siang", "malam"],
+    "goodbye": ["bye", "dadah", "sampai jumpa", "selamat tinggal"],
+    "thanks": ["terima kasih", "makasih", "thanks", "thx"],
+    "cek_kemiripan": ["persentase", "kemiripan", "similaritas", "sama", "seberapa"],
+    "top_mirip": ["mirip", "semirip apa", "top mirip", "paling mirip"],
+    "metode_mirip": ["metode", "pakai metode apa", "metode apa"],
+    "rekomendasi": ["saran", "ganti judul", "unik atau tidak", "rekomendasi"],
+    "help": ["bisa apa", "bantu apa", "fitur", "apa yang bisa"],
+    "tahun_terbit": ["tahun", "kapan terbit", "tahun terbit", "tahun skripsi"],
+    "pembimbing": ["dosen pembimbing", "siapa pembimbing", "pembimbingnya"],
+    "mahasiswa": ["mahasiswa", "nama mahasiswa", "siapa yang buat", "penulis"]
+}
+
 # ---------- Intent Deteksi Sederhana ----------
 def detect_intent(text):
     text = clean_text(text)
-    if any(word in text for word in ["halo", "hai", "pagi", "siang", "malam"]):
-        return "greeting"
-    elif any(word in text for word in ["bye", "dadah", "sampai jumpa"]):
-        return "goodbye"
-    elif any(word in text for word in ["terima kasih", "makasih"]):
-        return "thanks"
-    elif any(word in text for word in ["persentase", "kemiripan", "similaritas", "seberapa", "berapa"]):
-        return "cek_kemiripan"
-    elif any(word in text for word in ["mirip", "mirip apa", "top mirip"]):
-        return "top_mirip"
-    elif any(word in text for word in ["metode mirip", "pakai metode apa"]):
-        return "metode_mirip"
-    elif any(word in text for word in ["saran", "ganti judul", "unik atau tidak"]):
-        return "rekomendasi"
-    elif any(word in text for word in ["bisa apa", "bantu apa", "fitur"]):
-        return "help"
-    elif any(word in text for word in ["tahun", "kapan terbit", "tahun terbit", "tahun skripsi"]):
-        return "tahun_terbit"
-    elif any(word in text for word in ["dosen pembimbing", "siapa pembimbing", "pembimbingnya"]):
-        return "pembimbing"
-    elif any(word in text for word in ["mahasiswa", "nama mahasiswa", "siapa yang buat", "penulis"]):
-        return "mahasiswa"
-    else:
-        return "unknown"
+    highest_score = 0
+    detected_intent = "unknown"
+
+    for intent, keywords in intent_synonyms.items():
+        for keyword in keywords:
+            # Cek keseluruhan kalimat (frasa)
+            score_phrase = fuzz.ratio(text, keyword)
+            # Cek per kata dalam kalimat
+            score_word = max(fuzz.ratio(word, keyword) for word in text.split())
+
+            # Ambil score tertinggi
+            score = max(score_phrase, score_word)
+
+            if score > highest_score and score > 80:  # threshold 80%
+                highest_score = score
+                detected_intent = intent
+
+    return detected_intent
 
 # ---------- Streamlit Layout ----------
-st.title("🎓 Chatbot Skripsi AI")
-st.markdown("Masukkan judul skripsi kamu dan ngobrol langsung sama chatbot buat cek kemiripan!")
+# ---------- Sidebar ----------
+with st.sidebar:
+    st.title("📚 Chatbot Title Match")
+    st.markdown("👩‍🎓 Dibuat untuk mahasiswa Teknik Informatika UNPAD yang butuh cek judul skripsi.")
+    st.markdown("---")
+    st.markdown("### ℹ Tips Penggunaan:")
+    st.markdown("""
+    - Masukkan judul skripsi terlebih dahulu.
+    - Tanyakan hal-hal seperti:
+        - "Apakah ada judul yang mirip?"
+        - "Seberapa mirip judulku?"
+        - "Apa metode yang dipakai?"
+        - "Siapa dosen pembimbingnya?"
+        - "Bisa kasih saran langkah selanjutnya?"
+    """)
+    st.markdown("---")
+    st.caption("Made by Latsa, Aifa, Ica")
+    st.caption("Powered by 🧠 Mixtral-8x7B via Together AI")
+
+# ---------- Halaman Utama ----------
+st.markdown("<h1 style='text-align:center;'>🤖 Chatbot Title Match</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align:center;'>Cek kemiripan judul skripsi Teknik Informatika UNPAD dan dapatkan insight dari AI!</p>", unsafe_allow_html=True)
+st.markdown("---")
 
 # Inisialisasi state
 if 'judul_user' not in st.session_state:
@@ -147,20 +191,32 @@ if 'messages' not in st.session_state:
     st.session_state.messages = []
 
 # Input Judul Awal
-with st.expander("📝 Masukkan Judul Skripsi Kamu Dulu", expanded=not st.session_state.judul_user):
-    judul_input = st.text_input("Judul Skripsi:")
-    metode_input = st.text_input("Metode Penelitian (opsional):")
-    if st.button("Submit Judul"):
-        if judul_input.strip():
-            st.session_state.judul_user = judul_input
-            scores, titles, methods, bidang, max_score, top_title = cek_kemiripan(judul_input, metode_input)
-            st.session_state.similarity_scores = scores
-            st.session_state.similar_titles = titles
-            st.session_state.similar_methods = methods
-            st.session_state.bidang_prediksi = bidang
-            st.session_state.max_similarity = max_score
-            st.session_state.top_title = top_title
-            st.success(f"Judul berhasil diproses! Bidang minat terdeteksi: {bidang}. Sekarang kamu bisa tanya-tanya ke chatbot 👇")
+# ---------- Input Judul ----------
+with st.container():
+    with st.expander("📥 Masukkan Judul Skripsi Kamu", expanded=not st.session_state.judul_user):
+        judul_input = st.text_input("📝 Judul Skripsi")
+        metode_input = st.text_input("🔬 Metode Penelitian (Opsional)")
+        if st.button("🚀 Submit Judul"):
+            if judul_input.strip():
+                st.session_state.judul_user = judul_input
+                scores, titles, methods, bidang, max_score, top_title = cek_kemiripan(judul_input, metode_input)
+                st.session_state.similarity_scores = scores
+                st.session_state.similar_titles = titles
+                st.session_state.similar_methods = methods
+                st.session_state.bidang_prediksi = bidang
+                st.session_state.max_similarity = max_score
+                st.session_state.top_title = top_title
+                st.success(f"✅ Judul berhasil diproses! Bidang Minat: *{bidang}*.Sekarang kamu bisa tanya-tanya ke chatbot 👇")
+
+# ---------- Ringkasan Hasil ----------
+if st.session_state.judul_user:
+    st.markdown("### 📊 Hasil Analisis Judul")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("📈 Kemiripan Tertinggi", f"{st.session_state.max_similarity*100:.2f}%")
+    with col2:
+        st.metric("🎯 Judul Paling Mirip", st.session_state.top_title or "Tidak ditemukan")
+    st.markdown("---")
 
 # Riwayat Chat
 for msg in st.session_state.messages:
