@@ -210,11 +210,9 @@ with st.container():
 # ---------- Ringkasan Hasil ----------
 if st.session_state.judul_user:
     st.markdown("### 📊 Hasil Analisis Judul")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric("📈 Kemiripan Tertinggi", f"{st.session_state.max_similarity*100:.2f}%")
-    with col2:
-        st.metric("🎯 Judul Paling Mirip", st.session_state.top_title or "Tidak ditemukan")
+    st.metric("📈 Kemiripan Tertinggi", f"{st.session_state.max_similarity*100:.2f}%")
+    st.markdown("🎯 *Judul Paling Mirip:*")
+    st.write(st.session_state.top_title or "Tidak ditemukan")
     st.markdown("---")
 
 # Riwayat Chat
