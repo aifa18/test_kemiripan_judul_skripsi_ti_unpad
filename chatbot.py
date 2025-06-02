@@ -169,7 +169,6 @@ with st.sidebar:
     """)
     st.markdown("---")
     st.caption("Made by Latsa, Aifa, Ica")
-    st.caption("Powered by 🧠 Mixtral-8x7B via Together AI")
 
 # ---------- Halaman Utama ----------
 st.markdown("<h1 style='text-align:center;'>🤖 Chatbot Title Match</h1>", unsafe_allow_html=True)
