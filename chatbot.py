@@ -7,11 +7,13 @@ from sklearn.naive_bayes import MultinomialNB
 from sklearn.pipeline import make_pipeline
 from sklearn.metrics.pairwise import cosine_similarity
 import requests
+import google.generativeai as genai
 
-TOGETHER_API_KEY = "dbca14bfa35585175c337ca19b242e4f5b765a8bbe6aa0d9d555b32750853da7"
-TOGETHER_MODEL = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+GEMINI_API_KEY = "AIzaSyDE47svwoYcG7VI66MAydw8pNgSvopHeJo"
+# Setup konfigurasi API
+genai.configure(api_key=GEMINI_API_KEY)
 
-def ask_together_ai(user_input):
+def ask_gemini_api(user_input):
     prompt = f"""
     Kamu adalah chatbot untuk membantu mahasiswa memeriksa kemiripan judul skripsi mereka dan memberikan informasi terkait judul skripsi atau skripsi. 
     Judul skripsi yang sedang dicek: "{st.session_state.judul_user}". 
@@ -21,32 +23,17 @@ def ask_together_ai(user_input):
     Jawablah dengan relevan sesuai konteks.
     """
 
-    url = "https://api.together.xyz/inference"
-    headers = {
-        "Authorization": f"Bearer {TOGETHER_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    data = {
-        "model": TOGETHER_MODEL,
-        "prompt": prompt,
-        "max_tokens": 200,
-        "temperature": 0.7
-    }
-    response = requests.post(url, headers=headers, json=data)
-    if response.status_code == 200:
-        try:
-            json_response = response.json()
-            raw_output = json_response["choices"][0]["text"]
-
-            # Bersihkan kata-kata "Jawaban:" atau "Contoh jawaban:"
-            clean_output = re.sub(r"(?i)^\s*(jawaban|contoh jawaban)\s*[:：-]\s", "", raw_output.strip())
-
+    try:
+        model = genai.GenerativeModel('gemini-2.0-flash')
+        response = model.generate_content(prompt)
+        if response and response.text:
+            # Bersihkan jika ada kata pembuka seperti "Jawaban:"
+            clean_output = re.sub(r"(?i)^\s*(jawaban|contoh jawaban)\s*[:：-]\s", "", response.text.strip())
             return clean_output
-
-        except (KeyError, IndexError):
-            return "Maaf, aku tidak bisa memproses hasil Together AI."
-    else:
-        return f"⚠ Error dari Together AI: {response.status_code} - {response.text}"
+        else:
+            return "Maaf, aku tidak menerima jawaban dari Gemini."
+    except Exception as e:
+        return f"⚠ Error dari Gemini API: {str(e)}"
 
 # ---------- Load Dataset ----------
 @st.cache_data
@@ -205,13 +192,13 @@ with st.container():
                 st.session_state.bidang_prediksi = bidang
                 st.session_state.max_similarity = max_score
                 st.session_state.top_title = top_title
-                st.success(f"✅ Judul berhasil diproses! Bidang Minat: *{bidang}*.Sekarang kamu bisa tanya-tanya ke chatbot 👇")
+                st.success(f"✅ Judul berhasil diproses! Bidang Minat: {bidang}.Sekarang kamu bisa tanya-tanya ke chatbot 👇")
 
 # ---------- Ringkasan Hasil ----------
 if st.session_state.judul_user:
     st.markdown("### 📊 Hasil Analisis Judul")
     st.metric("📈 Kemiripan Tertinggi", f"{st.session_state.max_similarity*100:.2f}%")
-    st.markdown("🎯 *Judul Paling Mirip:*")
+    st.markdown("🎯 Judul Paling Mirip:")
     st.write(st.session_state.top_title or "Tidak ditemukan")
     st.markdown("---")
 
@@ -310,7 +297,7 @@ if prompt := st.chat_input("Tanya sesuatu..."):
             elif intent == "thanks":
                 bot_msg = "Sama-sama! Semangat terus yaa ✨"
             else:
-                bot_msg = ask_together_ai(prompt)
+                bot_msg = ask_gemini_api(prompt)
 
         st.markdown(bot_msg)
         st.session_state.messages.append({"role": "assistant", "content": bot_msg})
