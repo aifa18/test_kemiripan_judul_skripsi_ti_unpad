@@ -4,3 +4,4 @@ scikit-learn
 fuzzywuzzy
 python-Levenshtein
 requests
+google-generativeai
