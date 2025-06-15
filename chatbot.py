@@ -15,7 +15,7 @@ genai.configure(api_key=GEMINI_API_KEY)
 
 def ask_gemini_api(user_input):
     prompt = f"""
-    Kamu adalah chatbot untuk membantu mahasiswa memeriksa kemiripan judul skripsi mereka dan memberikan informasi terkait judul skripsi atau skripsi. 
+    Kamu adalah chatbot untuk membantu mahasiswa memeriksa kemiripan judul skripsi mereka dan tugasmu adalah menjawab pertanyaan seputar skripsi, memberikan penilaian terhadap kemiripan judul, serta menyarankan perbaikan atau rekomendasi topik skripsi jika diminta.
     Judul skripsi yang sedang dicek: "{st.session_state.judul_user}". 
     Bidang minat terdeteksi: "{st.session_state.bidang_prediksi}". 
     Judul-judul skripsi yang mirip: {st.session_state.similar_titles}. 
@@ -244,10 +244,26 @@ if prompt := st.chat_input("Tanya sesuatu..."):
                     )
                 )
             elif intent == "rekomendasi":
-                if max(st.session_state.similarity_scores) > 0.8:
-                    bot_msg = "💡 Judul kamu terlalu mirip dengan yang sudah ada di bidang yang sama. Coba ganti topik atau metode penelitian."
+                threshold = 0.8  # nilai ambang kemiripan
+
+                if st.session_state.max_similarity > threshold:
+                    judul_user = st.session_state.judul_user
+                    # Judul terlalu mirip, minta Gemini kasih saran judul baru
+                    prompt = f"""Judul skripsi berikut ini terlalu mirip dengan yang sudah ada:
+                    "{judul_user}"
+
+                    Berikan beberapa alternatif judul skripsi baru yang berbeda dari judul tersebut, tapi masih di bidang yang sama (atau bisa juga bidang yang relevan). Sertakan alasan mengapa topik baru tersebut layak diteliti."""
+                
                 else:
-                    bot_msg = "✅ Judul kamu cukup unik dalam bidang itu. Lanjutkan dan kembangkan idemu!"
+                    judul_user = st.session_state.judul_user
+                    # Judul cukup unik, minta Gemini bantu mengembangkan idenya
+                    prompt = f"""Judul skripsi ini cukup unik:
+                    "{judul_user}"
+
+                    Berikan saran langkah-langkah atau arahan pengembangan ide skripsi ini. Misalnya: pendekatan metode penelitian, dataset yang bisa dipakai, studi kasus potensial, atau referensi awal."""
+
+                # Kirim prompt ke Gemini dan dapatkan balasannya
+                bot_msg = ask_gemini_api(prompt)
             elif intent == "help":
                 bot_msg = (
                     "🧠 Aku bisa bantu kamu:\n"
